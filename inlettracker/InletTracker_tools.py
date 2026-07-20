@@ -6,6 +6,7 @@
 # load modules
 import os
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 
 # image processing modules
@@ -279,11 +280,26 @@ def set_openvsclosed(im_ms, inputs,jpg_out_path, cloud_mask,  georef,
     im_RGB = np.where(np.isnan(im_RGB), nan_color, im_RGB)  
 
     # create image 1 (RGB)
+    # DEBUGGING LINES
+    print(f"DEBUG: Xmin={Xmin}, Xmax={Xmax}, Ymin={Ymin}, Ymax={Ymax}")
+    print(f"DEBUG: im_RGB shape={im_RGB.shape}")
+    print(f"DEBUG: im_RGB min={np.nanmin(im_RGB)}, max={np.nanmax(im_RGB)}")
+    #END DEBUGGING LINES
+    
     ax1.imshow(im_RGB)
     #ax1.plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
     ax1.axis('off')
+    #DEBUGGING LINES (original are commented below)
     ax1.set_xlim(Xmin-30, Xmax+30)
     ax1.set_ylim( Ymax+30, Ymin-30)  
+    # if Xmin > -100 and Xmax > -100 and Ymin > -100 and Ymax > -100:  # check if valid
+    #     ax1.set_xlim(Xmin-30, Xmax+30)
+    #     ax1.set_ylim(Ymax+30, Ymin-30)
+    # else:  # use full image if bounding box invalid
+    #     ax1.set_xlim(0, im_RGB.shape[1])
+    #     ax1.set_ylim(im_RGB.shape[0], 0)
+    # #End debugging
+    
     ax1.set_title(inputs['sitename'], fontweight='bold', fontsize=16)
 
     # create image 2 (classification)
@@ -291,8 +307,17 @@ def set_openvsclosed(im_ms, inputs,jpg_out_path, cloud_mask,  georef,
     ax2.imshow(im_NDWI, cmap='bwr', vmin=-1, vmax=1)
     #ax2.plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
     ax2.axis('off')
-    ax2.set_xlim(Xmin-30, Xmax+30)
-    ax2.set_ylim( Ymax+30, Ymin-30)  
+    # DEBUGGING LINES (originals are commented below_)
+    # ax2.set_xlim(Xmin-30, Xmax+30)
+    # ax2.set_ylim( Ymax+30, Ymin-30)
+    if Xmin > -100 and Xmax > -100 and Ymin > -100 and Ymax > -100:  # check if valid
+        ax2.set_xlim(Xmin-30, Xmax+30)
+        ax2.set_ylim(Ymax+30, Ymin-30)
+    else:  # use full image if bounding box invalid
+        ax2.set_xlim(0, im_RGB.shape[1])
+        ax2.set_ylim(im_RGB.shape[0], 0)
+    #END DEBUGGING
+    
     ax2.set_title( 'NDWI ' + date, fontweight='bold', fontsize=16)
 
     # create image 3 (MNDWI)
@@ -300,6 +325,14 @@ def set_openvsclosed(im_ms, inputs,jpg_out_path, cloud_mask,  georef,
     #ax3.plot(sl_pix[:,0], sl_pix[:,1], 'k.', markersize=3)
     ax3.axis('off')
     #plt.colorbar()
+    #DEBUGGING LINES: (Original lines are commented below)
+    if Xmin > -100 and Xmax > -100 and Ymin > -100 and Ymax > -100:  # check if valid
+        ax3.set_xlim(Xmin-30, Xmax+30)
+        ax3.set_ylim(Ymax+30, Ymin-30)
+    else:  # use full image if bounding box invalid
+        ax3.set_xlim(0, im_RGB.shape[1])
+        ax3.set_ylim(im_RGB.shape[0], 0)
+    #END DEBUGGING SECTION
     ax3.set_xlim(Xmin-30, Xmax+30)
     ax3.set_ylim( Ymax+30, Ymin-30)  
     ax3.set_title('mNDWI ' +  satname + ' ' + str(int(((image_nr+1)/len(filenames_itm))*100)) + '%', fontweight='bold', fontsize=16)
@@ -449,11 +482,25 @@ def create_training_data(metadata, settings, settings_training):
                 date = filenames[i][:19]
         
                 # preprocess image (cloud mask + pansharpening/downsampling)
+                #DEBUGGING SECTION
+                import numpy as np
+                #END DEBUGGING SECTION
                 im_ms, georef, cloud_mask, im_extra, imQA, im_nodata  = SDS_preprocess.preprocess_single(fn, satname, settings['cloud_mask_issue'])
+                #DEBUG SECTION
+                im_ms = np.where(np.isinf(im_ms), np.nan, im_ms)
+                im_ms = np.where(im_ms < 0, np.nan, im_ms)
+                # print(f"DEBUG: im_ms shape: {im_ms.shape}")
+                # print(f"DEBUG: im_ms min: {np.nanmin(im_ms)}")
+                # print(f"DEBUG: im_ms max: {np.nanmax(im_ms)}")
+                # print(f"DEBUG: cloud_mask shape: {cloud_mask.shape}")
+                #DEBUG SECTION
             
                 # calculate cloud cover
                 cloud_cover = np.divide(sum(sum(cloud_mask.astype(int))),
                                         (cloud_mask.shape[0]*cloud_mask.shape[1]))
+                #DEBUGGINGS LINE:
+                print(f"DEBUG: cloud_cover = {cloud_cover:.3f}")
+                print(f"DEBUG: cloud thresh hold = {settings['cloud_thresh']:.3f}")
                           
                 #load boundary shapefiles for each scene and reproject according to satellite image epsg  
                 shapes = load_shapes_as_ndarrays(settings['inputs']['location_shps']['layer'].values, settings['inputs']['location_shps'], satname, sitename, settings['shapefile_EPSG'],
@@ -685,7 +732,12 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                 #use mNDWI for path finding to get a transect along the deepest part of lake
                 costSurfaceArray  = SDS_tools.nd_index(im_ms[:,:,4], im_ms[:,:,1], cloud_mask)
                 costSurfaceArray_B = np.copy(costSurfaceArray)
-                
+           
+            #DEBUGGING CODE
+            #costSurfaceArray   = np.clip(costSurfaceArray, -1, 1) 
+            #costSurfaceArray_B = np.clip(costSurfaceArray_B, -1, 1)
+            #DEBUGGING CODE
+            
             #finalize the costsurface array to facilitate better path finding for inlet situations
             # XB: the routthrougharray algorithm did not work well with negative values so spectral indices are shifted into the positive here via +1
             costSurfaceArray_A = costSurfaceArray + 2    #shift the costsurface to above 1 so that we can do proper exponentiation
@@ -742,7 +794,7 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                 phi = 0
                 deltax = pts_world_B[k+1,0] - pts_world_B[k,0]
                 deltay = pts_world_B[k+1,1] - pts_world_B[k,1]
-                phi = np.pi/2 - np.math.atan2(deltax, deltay)
+                phi = np.pi/2 - math.atan2(deltax, deltay)
                 tf = transform.EuclideanTransform(rotation=phi, translation=pts_world_B[k,:])
                 pts_world_interp_B = np.append(pts_world_interp_B,tf(pt_coords), axis=0)
             pts_world_interp_B = np.delete(pts_world_interp_B,0,axis=0)
@@ -820,7 +872,7 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                 phi = 0
                 deltax = pts_world[k+1,0] - pts_world[k,0]
                 deltay = pts_world[k+1,1] - pts_world[k,1]
-                phi = np.pi/2 - np.math.atan2(deltax, deltay)
+                phi = np.pi/2 - math.atan2(deltax, deltay)
                 tf = transform.EuclideanTransform(rotation=phi, translation=pts_world[k,:])
                 pts_world_interp = np.append(pts_world_interp,tf(pt_coords), axis=0)
             pts_world_interp = np.delete(pts_world_interp,0,axis=0)
@@ -848,19 +900,23 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
             XBline_mp = geometry.MultiPoint(pts_pix_interp)
             ABline_mp = geometry.MultiPoint(pts_pix_interp_B)            
             #calculate the exact point of intersection (could be between vertices as this is done based on polylines)
-            intersection  = ABline.intersection(XBline)        
+            intersection  = ABline.intersection(XBline)  
+            
+            #DEBUGGING THE ELSE BLOCK HAS BEEN SIGNIFICANTLY CHANGED (original code below)
             if intersection.is_empty:
                 print('no intersection exists between XB and AB transects')
-                Intersection_coords = []             
-            else: 
-                try:
-                    intersection  = intersection[0]
-                except:
-                    #print('intersection was already a point')
-                    print('')
-                Intersection_coords = [intersection.coords[:][0][0], intersection.coords[:][0][1]] 
-                #this throws an error when the intersection returns multiple points or a point and a linestring 
-                #Find nearest point in the multipoint versions of the transects and the intersection
+                Intersection_coords = []
+            else:     # Shapely 2.x: sub-geometries of multi-part results live under .geoms 
+                Intersection_coords = []  # NEW: safe default, always defined if intersection.is_empty:     
+                #print('no intersection exists between XB and AB transects') 
+                
+                if intersection.geom_type in ('MultiPoint', 'MultiLineString', 'GeometryCollection'):         
+                     intersection = list(intersection.geoms)[0]     
+                if intersection.geom_type == 'LineString':         # transects overlap along a collinear segment; use its first vertex         
+                     intersection = geometry.Point(intersection.coords[0])     
+                Intersection_coords = [intersection.coords[:][0][0], intersection.coords[:][0][1]]       # rest unchanged
+                     #this throws an error when the intersection returns multiple points or a point and a linestring 
+                     #Find nearest point in the multipoint versions of the transects and the intersection
                 AB_nearest_vertice = nearest_points(ABline_mp, intersection)[0].coords[:][0]
                 AB_nearest_vertice =  [AB_nearest_vertice[0], AB_nearest_vertice[1]]
                 AB_distance_to_intersection =  [list(item) for item in pts_pix_interp_B].index(AB_nearest_vertice)               
@@ -868,7 +924,30 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                 XB_nearest_vertice =  [XB_nearest_vertice[0], XB_nearest_vertice[1]]
                 XB_distance_to_intersection =  [list(item) for item in pts_pix_interp].index(XB_nearest_vertice)             
                 XS[filenames[i][:19]  + '_' + satname + '_AB_distance_to_intersection'] = AB_distance_to_intersection  
-                XS[filenames[i][:19]  + '_' + satname + '_XB_distance_to_intersection'] = XB_distance_to_intersection            
+                XS[filenames[i][:19]  + '_' + satname + '_XB_distance_to_intersection'] = XB_distance_to_intersection
+            # END DEBUGGING
+                
+            
+       
+            
+            #ORIGINAL CODE
+            # else: 
+            #     try:
+            #         intersection  = intersection[0]
+            #     except:
+            #         #print('intersection was already a point')
+            #         print('')
+            #     Intersection_coords = [intersection.coords[:][0][0], intersection.coords[:][0][1]] 
+            #     #this throws an error when the intersection returns multiple points or a point and a linestring 
+            #     #Find nearest point in the multipoint versions of the transects and the intersection
+            #     AB_nearest_vertice = nearest_points(ABline_mp, intersection)[0].coords[:][0]
+            #     AB_nearest_vertice =  [AB_nearest_vertice[0], AB_nearest_vertice[1]]
+            #     AB_distance_to_intersection =  [list(item) for item in pts_pix_interp_B].index(AB_nearest_vertice)               
+            #     XB_nearest_vertice = nearest_points(XBline_mp, intersection)[0].coords[:][0]
+            #     XB_nearest_vertice =  [XB_nearest_vertice[0], XB_nearest_vertice[1]]
+            #     XB_distance_to_intersection =  [list(item) for item in pts_pix_interp].index(XB_nearest_vertice)             
+            #     XS[filenames[i][:19]  + '_' + satname + '_AB_distance_to_intersection'] = AB_distance_to_intersection  
+            #     XS[filenames[i][:19]  + '_' + satname + '_XB_distance_to_intersection'] = XB_distance_to_intersection            
                 
             #dump the XS dictionary as pkl file again
             outfile = open(XS_dict_fn,'wb')
@@ -902,8 +981,13 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
             infile.close()  
             
             #append new transects
-            gdf_all = gdf_all.append(gdf)
-            gdf_all = gdf_all.append(gdf_B)
+            #DEBUGGING LINES
+            gdf_all = pd.concat([gdf_all, gdf]) 
+            gdf_all = pd.concat([gdf_all, gdf_B])
+            
+            # ORIGINAL LINES
+            # gdf_all = gdf_all.append(gdf)
+            # gdf_all = gdf_all.append(gdf_B)
             
             #dump as pkl file   
             outfile = open(gdf_all_fn,'wb')
@@ -918,6 +1002,10 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                 ax=plt.subplot(4,3,3)
                 im_RGB = SDS_preprocess.rescale_image_intensity(im_ms[:,:,[2,1,0]], cloud_mask, 99.9)  
                 plt.imshow(im_RGB, interpolation="bicubic") 
+                # DEBUG Start
+                plt.pause(0.1)  # add this
+                plt.draw()      # add this
+                #DEBUG End
                 plt.rcParams["axes.grid"] = False
                 plt.title(satname + ' ' +str(dates_dict[filenames[i]].date()), fontsize=settings_inlet['axlabelsize'])
                 ax.axis('off')
@@ -952,7 +1040,7 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                         phi = 0
                         deltax = ptsbbx_world[k+1,0] - ptsbbx_world[k,0]
                         deltay = ptsbbx_world[k+1,1] - ptsbbx_world[k,1]
-                        phi = np.pi/2 - np.math.atan2(deltax, deltay)
+                        phi = np.pi/2 - math.atan2(deltax, deltay)
                         tf = transform.EuclideanTransform(rotation=phi, translation=ptsbbx_world[k,:])
                         ptsbbx_world_interp = np.append(ptsbbx_world_interp,tf(pt_coords), axis=0)
                     ptsbbx_world_interp = np.delete(ptsbbx_world_interp,0,axis=0)
@@ -973,7 +1061,7 @@ def automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tid
                         phi = 0
                         deltax = ptsbbx_world[k+1,0] - ptsbbx_world[k,0]
                         deltay = ptsbbx_world[k+1,1] - ptsbbx_world[k,1]
-                        phi = np.pi/2 - np.math.atan2(deltax, deltay)
+                        phi = np.pi/2 - math.atan2(deltax, deltay)
                         tf = transform.EuclideanTransform(rotation=phi, translation=ptsbbx_world[k,:])
                         ptsbbx_world_interp = np.append(ptsbbx_world_interp,tf(pt_coords), axis=0)
                     ptsbbx_world_interp = np.delete(ptsbbx_world_interp,0,axis=0)
@@ -1468,8 +1556,15 @@ def bestThreshold(y_true,y_pred):
     best_thresh = None
     best_score = -1
     for thresh in np.arange(0.01, 0.2,  0.01):
-        thresh_df['clfd'][thresh_df.iloc[:, 0] >= thresh] = 1
-        thresh_df['clfd'][thresh_df.iloc[:, 0] < thresh] = 0      
+        #ORIGINAL LINES
+        #thresh_df['clfd'][thresh_df.iloc[:, 0] >= thresh] = 1
+        #thresh_df['clfd'][thresh_df.iloc[:, 0] < thresh] = 0    
+        
+        #DEBUGGING LINES FOR PANDAS 3
+        thresh_df.loc[thresh_df.iloc[:, 0] >= thresh, 'clfd'] = 1 
+        thresh_df.loc[thresh_df.iloc[:, 0] < thresh, 'clfd'] = 0 # and at 1704: XS_sums_df.loc[XS_sums_df['Across_berm_DTM'] > DTM_threshold, 'bin_inlet_state'] = 1
+         
+        
         score = f1_score(y_true, thresh_df['clfd'])
         if score > best_score:
             tn, fp, fn, tp = confusion_matrix(y_true, thresh_df['clfd']).ravel()
@@ -1478,6 +1573,7 @@ def bestThreshold(y_true,y_pred):
             best_score = score
     return best_score , Accuracy, tn, fp, fn, tp, best_thresh
  
+
  
 def calculateDeltaToMedian(XS_df, postprocess_params, calc_direction):
     """
@@ -1534,9 +1630,9 @@ def calculateDeltaToMedian(XS_df, postprocess_params, calc_direction):
         if not isinstance(intersection, float):
             intersection = intersection.iloc[0]
         if calc_direction == 'AB':
-            df2_dict[XScolname] = df2[XScolname][max(np.int(intersection - postprocess_params['AB_intersection_search_distance']),0) : np.int(intersection + postprocess_params['AB_intersection_search_distance'] )].min()         
+            df2_dict[XScolname] = df2[XScolname][max(int(intersection - postprocess_params['AB_intersection_search_distance']),0) : int(intersection + postprocess_params['AB_intersection_search_distance'] )].min()         
         if calc_direction == 'XB':
-            df2_dict[XScolname] = df2[XScolname][max(np.int(intersection - postprocess_params['XB_intersection_search_distance']),0) : np.int(intersection + postprocess_params['XB_intersection_search_distance'] )].max()               
+            df2_dict[XScolname] = df2[XScolname][max(int(intersection - postprocess_params['XB_intersection_search_distance']),0) : int(intersection + postprocess_params['XB_intersection_search_distance'] )].max()               
     df3 = pd.DataFrame.from_dict(df2_dict,  orient='index')          
     
     newindex = []
@@ -1641,6 +1737,8 @@ def subset_DTM_df_in_time(Input_df, startdate, enddate):
     for index in Input_df.index:
         newindex.append(pd.to_datetime(index[:19], format = '%Y-%m-%d-%H-%M-%S'))
     Input_df.index = newindex
+    Input_df = Input_df.sort_index() # DEBUGGING LINE for update pandas resorting in chronological order
+
     
     #subset the dataframe for a specific period of interest
     Input_df  = Input_df[startdate:enddate]
@@ -1766,7 +1864,8 @@ def check_inlet_state_detection(postprocess_out_path, XS_DTM_classified_df):
       
     plt.close('all') 
     XS_DTM_clfd_quality_contrd_df = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in XS_DTM_clfd_quality_contrd.items() ])).transpose()
-    XS_DTM_clfd_quality_contrd_df.columns = ['Inlet_state']
+    #XS_DTM_clfd_quality_contrd_df.columns = ['Inlet_state']
+    XS_DTM_clfd_quality_contrd_df.columns = ['bin_inlet_state']   #DEBUGGED LINE: from the QC step to the final plotting step, the name of the collumn needed to be changed
     
     return XS_DTM_clfd_quality_contrd_df
 
@@ -2030,7 +2129,7 @@ def plot_inlettracker_resultsV2(XS_df, XS_gdf, XS_DTM_classified_df, settings, p
                 direction).plot(color=postprocess_params['open_color'],  linestyle = postprocess_params['linestyle'][0],lw=1.5,alpha=0.3,ax=ax)
     plt.ylim(-1,0.7)
     plt.xlim(left=0)
-    plt.xlim(0, np.int(XS_o_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
+    plt.xlim(0, int(XS_o_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
                 direction).notna().sum().mean()))
     plt.axhline(y=0, xmin=-1, xmax=1, color='grey', linestyle='--', lw=1, alpha=0.5) 
     #plt.text(1,0,'C',horizontalalignment='left', color='grey' , fontsize=postprocess_params['labelsize'])
@@ -2042,7 +2141,7 @@ def plot_inlettracker_resultsV2(XS_df, XS_gdf, XS_DTM_classified_df, settings, p
     XS_c_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
                 direction).plot(color=postprocess_params['closed_color'], linestyle = postprocess_params['linestyle'][0],lw=1.5,alpha=0.3, ax=ax)
     plt.ylim(-1,0.7)
-    plt.xlim(0, np.int(XS_c_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
+    plt.xlim(0, int(XS_c_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
             direction).notna().sum().mean()))
     #plt.xlim(left=0)
     plt.axhline(y=0, xmin=-1, xmax=1, color='grey', linestyle='--', lw=1, alpha=0.5) 
@@ -2057,7 +2156,7 @@ def plot_inlettracker_resultsV2(XS_df, XS_gdf, XS_DTM_classified_df, settings, p
     XS_o_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
                 direction).plot(color=postprocess_params['open_color'],  linestyle= postprocess_params['linestyle'][0],lw=1.5,alpha=0.3,ax=ax)    
     plt.ylim(-1,0.7)
-    plt.xlim(0, np.int(XS_o_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
+    plt.xlim(0, int(XS_o_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
         direction).notna().sum().mean()))
     plt.axhline(y=0, xmin=-1, xmax=1, color='grey', linestyle='--', lw=1, alpha=0.5) 
     #plt.text(1,0,'A',horizontalalignment='left', color='grey' , fontsize=postprocess_params['labelsize'])
@@ -2069,7 +2168,7 @@ def plot_inlettracker_resultsV2(XS_df, XS_gdf, XS_DTM_classified_df, settings, p
     XS_c_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
                 direction).plot(color=postprocess_params['closed_color'], linestyle = postprocess_params['linestyle'][0],lw=1.5,alpha=0.3, ax=ax)
     plt.ylim(-1,0.7)
-    plt.xlim(0, np.int(XS_c_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
+    plt.xlim(0, int(XS_c_df.filter(regex='|'.join(postprocess_params['sat_list_Fig2'])).filter(regex='_' + postprocess_params['spectral_index']).filter(regex='_' + 
         direction).notna().sum().mean()))
     plt.axhline(y=0, xmin=-1, xmax=1, color='grey', linestyle='--', lw=1, alpha=0.5) 
     #plt.text(1,0,'A',horizontalalignment='left', color='grey' , fontsize=postprocess_params['labelsize'])
@@ -2091,10 +2190,13 @@ def plot_inlettracker_resultsV2(XS_df, XS_gdf, XS_DTM_classified_df, settings, p
 
     XS_c_sums_AB_df = pd.DataFrame(calculateDeltaToMedian(XS_c_df, postprocess_params, 'AB'))   
     XS_o_sums_AB_df = pd.DataFrame(calculateDeltaToMedian(XS_o_df, postprocess_params, 'AB'))    
-    XS_co_sums_AB_df = XS_c_sums_AB_df.append(XS_o_sums_AB_df)
+    #XS_co_sums_AB_df = XS_c_sums_AB_df.append(XS_o_sums_AB_df)
+    XS_co_sums_AB_df = pd.concat([XS_c_sums_AB_df,  XS_o_sums_AB_df])
+    
     XS_c_sums_XB_df = pd.DataFrame(calculateDeltaToMedian(XS_c_df, postprocess_params, 'XB'))   
     XS_o_sums_XB_df = pd.DataFrame(calculateDeltaToMedian(XS_o_df, postprocess_params,'XB'))    
-    XS_co_sums_XB_df = XS_c_sums_XB_df.append(XS_o_sums_XB_df)
+    #XS_co_sums_XB_df = XS_c_sums_XB_df.append(XS_o_sums_XB_df)
+    XS_co_sums_XB_df = pd.concat([XS_c_sums_XB_df,  XS_o_sums_XB_df])
         
     #plot along berm       
     ax=plt.subplot(2,1,1) 
@@ -2139,12 +2241,14 @@ def plot_inlettracker_resultsV2(XS_df, XS_gdf, XS_DTM_classified_df, settings, p
     XS_o_sums_XB_df1['bin_inlet_state'] = 1
     XS_c_sums_XB_df1['inlet_state'] = 'closed'
     XS_o_sums_XB_df1['inlet_state'] = 'open'
-    XS_co_sums_XB_cfd_df = XS_c_sums_XB_df1.append(XS_o_sums_XB_df1)
+    #XS_co_sums_XB_cfd_df = XS_c_sums_XB_df1.append(XS_o_sums_XB_df1) # original
+    XS_co_sums_XB_cfd_df = pd.concat([XS_c_sums_XB_df1, XS_o_sums_XB_df1]) #DEBUGGED pd pandas line update
     XS_co_sums_XB_cfd_df.columns = ['Across_berm','bin_inlet_state', 'inlet_state']
     
     XS_c_sums_AB_df1 = pd.DataFrame(XS_c_sums_AB_df)
     XS_o_sums_AB_df1 = pd.DataFrame(XS_o_sums_AB_df)     
-    XS_co_sums_AB_cfd_df = XS_c_sums_AB_df1.append(XS_o_sums_AB_df1)
+    #XS_co_sums_AB_cfd_df = XS_c_sums_AB_df1.append(XS_o_sums_AB_df1) # original
+    XS_co_sums_AB_cfd_df = pd.concat([XS_c_sums_AB_df1, XS_o_sums_AB_df1])  #DEBUGGEd pd. pandas line update
     XS_co_sums_AB_cfd_df.columns = ['Along_berm']
     
     XS_co_sums_AB_cfd_df = XS_co_sums_AB_cfd_df.sort_index(axis=0)
@@ -2251,6 +2355,7 @@ def load_FES_tide(settings, sat_list, metadata):
         sat_tides_df1.columns = ['tide_level']
         sat_tides_df1['fn'] = metadata[sat]['filenames']
         sat_tides_df1['sat'] = sat
-        sat_tides_df = sat_tides_df.append(sat_tides_df1)
+        #sat_tides_df = sat_tides_df.append(sat_tides_df1)
+        sat_tides_df = pd.concat([sat_tides_df, sat_tides_df1])
         
     return sat_tides_df, tides_df  

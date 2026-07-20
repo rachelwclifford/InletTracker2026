@@ -8,17 +8,19 @@
 
 #load modules
 import os
+os.chdir(r'C:\Users\rachel.clifford\OneDrive - Naval Postgraduate School\Desktop\InletTracker-main')
 from inlettracker import  InletTracker_tools 
 from coastsat import SDS_download
 import pandas as pd
 import glob
 import pickle
+import math
 
 # filepath where data will be stored
-filepath_data = os.path.join(os.getcwd(), 'data') #user input required | change this path to the location where you want to store the data (can be outside of ../Entrencesat)
+filepath_data = os.path.join(os.getcwd(), 'user_inputs/training_data/') #user input required | change this path to the location where you want to store the data (can be outside of ../Entrencesat)
 
 #sitename as specified in the input input_locations.shp
-sitename = 'DURRAS' #user input required
+sitename = 'Pajaro' #user input required
 site_shapefile_name = 'input_locations.shp' #user input required | change this if a new shapefile was created with the site configurations
 
 #this parameter is used to distinguish progressive 'sets' of analysis that may be based on different seed and receiver point configurations
@@ -26,10 +28,11 @@ site_shapefile_name = 'input_locations.shp' #user input required | change this i
 Analysis_version = 'V1'   #user input required
 
 # date range for analysis
-dates = ['1985-01-01', '2021-12-01']   #user input required
+dates = ['2019-01-01', '2019-12-31']   #user input required
 
 # satellite missions
-sat_list = ['L5','L7','L8','S2'] #user input required
+# sat_list = ['L5','L7','L8','S2'] #user input required
+sat_list = ['L8','S2'] #user input required
 
 #load shapefile that contains specific shapes for each ICOLL site as per readme file
 Site_shps, layers, BBX_coords = InletTracker_tools.load_shapes(site_shapefile_name, sitename)
@@ -46,7 +49,9 @@ inputs = {
         }
 
 # retrieve satellite images from GEE (run only once!)
-#metadata = SDS_download.retrieve_images(inputs) #user input required (hash this line only if you have already downloaded the data)
+print("starting test retrieve images ...")
+metadata = SDS_download.retrieve_images(inputs) #user input required (hash this line only if you have already downloaded the data)
+print("finished test retrieve images!!")
 
 # if you have already downloaded the images, just load the metadata file
 metadata = SDS_download.get_metadata(inputs) 
@@ -54,8 +59,8 @@ metadata = SDS_download.get_metadata(inputs)
 # general settings
 settings = { 
     # general parameters:
-    'cloud_thresh': 0.01,        # threshold on maximum cloud cover
-    'output_epsg': 3577,       # epsg code of spatial reference system desired for the spatial output files
+    'cloud_thresh': 0.5,        # threshold on maximum cloud cover
+    'output_epsg': 26910,       # epsg code of spatial reference system desired for the spatial output files
     'shapefile_EPSG' : 4326,     #epsg of shapefile containing sites and path finding seed and receiver points
     'use_fes_data': False,      # if the FES model was installed sucessfully, choose whether to include it in the analysis (True) or not (False). 
     'filepath_fes' : r"H:\Downloads\fes-2.9.1-Source\data\fes2014",
@@ -87,10 +92,42 @@ settings_training =  { # set parameters for training data generation
                       }
 
 # only rerun this step if you have not already generated a set of training data (i.e., only run once)
-Training_data_df = InletTracker_tools.create_training_data(metadata, settings, settings_training)
+#Training_data_df = InletTracker_tools.create_training_data(metadata, settings, settings_training)
 
- 
+# DEBUG SECTION
+# import matplotlib
+# matplotlib.use('Qt5Agg')
+# import matplotlib.pyplot as plt
+# plt.switch_backend('Qt5Agg')
+# plt.close('all')
+# plt.ion()
 
+# import numpy as np
+# from osgeo import gdal
+
+# def fix_nodata(filepath):
+#     ds = gdal.Open(filepath, gdal.GA_Update)
+#     for i in range(1, ds.RasterCount + 1):
+#         band = ds.GetRasterBand(i)
+#         data = band.ReadAsArray()
+#         data[np.isinf(data)] = 0
+#         band.WriteArray(data)
+#     ds = None
+
+# ms_folder = os.path.join(filepath_data, sitename, 'L8', 'ms')
+# for f in os.listdir(ms_folder):
+#     if f.endswith('.tif'):
+#         print(f"Fixing {f}...")
+#         fix_nodata(os.path.join(ms_folder, f))
+# print("Done!")
+
+# import matplotlib.pyplot as plt
+# plt.ion()
+# fig, ax = plt.subplots()
+# plt.show()
+# plt.pause(0.1)
+# plt.close('all')
+#END DEBUG SECTION
 
 
 
@@ -122,11 +159,15 @@ This is the major automated processing step of the algorithm consisting of:
     -during parameter tuning, it is recommended to use the ''number_of_images parameter to limit the number of images being processed here
 """
 
+
+
 # set parameters for automated inlet detection 
+
+
 settings_inlet =  {   
                   
     #key algorithm parameters
-    'path_index': 'mndwi',                   #band/index used for pathfinding | options are ndwi, mndwi, swir, nir !! do not capitalize !! 
+    'path_index': 'ndwi',                   #band/index used for pathfinding | options are ndwi, mndwi, swir, nir !! do not capitalize !! 
     'sand_percentile': 50 ,                #percentile of sand to plot - this is later used to calculate the delta to median parameter
     'XB_cost_raster_amp_exponent': 25,     #The cost raster based on 'path_index' will be exponentiated with this factor before path finding across berm
     'AB_cost_raster_amp_exponent': 25,     #The cost raster based on 'path_index' will be exponentiated with this factor before path finding along berm
@@ -169,6 +210,10 @@ settings_inlet =  {
     'img_crop_adjsut_Yax': 10
     }
 
+# #DEBUGGING LINE: 
+# metadata = {'S2': metadata['S2']}
+# settings['inputs']['sat_list'] = ['S2']
+    
 # run this function only if the current path finding settings haven't been processed yet (i.e., run only once for each spectral index)
 InletTracker_tools.automated_inlet_paths(metadata, settings, settings_inlet, tides_df , sat_tides_df)
 
@@ -202,7 +247,7 @@ postprocess_params = {
     'XB_intersection_search_distance' : 200,    #window on either side of the XB intersection to locate maximum (m)NDWI in the area of the channel bottleneck.
     'sat_list_pp' :  ['L5','L7','L8','S2'],      #these satellites are included in postprocessing.
     'startdate' :  '1985-01-01',
-    'enddate' : '2022-01-01',
+    'enddate' : '2026-01-01',
 
     # plotting parameters - do not have to be changed
     'closed_color' : 'orangered',           #color used for plotting closed inlet states
@@ -305,10 +350,10 @@ XS_DTM_classified_df = InletTracker_tools.subset_DTM_df_in_time(XS_DTM_classifie
 #For a first pass assessment or under limited time, skip this step! 
 
 #run the 'check detection' function and create a clean XS_DTM_classified_df
-#XS_DTM_classified_df = InletTracker_tools.check_inlet_state_detection(postprocess_out_path, XS_DTM_classified_df)
+XS_DTM_classified_df = InletTracker_tools.check_inlet_state_detection(postprocess_out_path, XS_DTM_classified_df)
 
 #write out the detection checked DTM classified dataframe to csv
-#XS_DTM_classified_df.to_csv(os.path.join(figure_out_path, settings['inputs']['sitename'] + '_checked_detection_clssfd_df_' + postprocess_params['spectral_index'] + '.csv'))
+XS_DTM_classified_df.to_csv(os.path.join(figure_out_path, settings['inputs']['sitename'] + '_checked_detection_clssfd_df_' + postprocess_params['spectral_index'] + '.csv'))
               
             
        

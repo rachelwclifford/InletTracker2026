@@ -26,7 +26,8 @@ from urllib.request import urlretrieve
 import zipfile
 import copy
 import shutil
-import gdal
+# import gdal
+from osgeo import gdal
 
 # additional modules
 from datetime import datetime, timedelta
@@ -36,7 +37,9 @@ from skimage import morphology, transform
 from scipy import ndimage
 
 # CoastSat modules
-from coastsat import SDS_preprocess, SDS_tools, gdal_merge
+from coastsat import SDS_preprocess, SDS_tools
+#, gdal_merge
+from osgeo_utils import gdal_merge
 
 np.seterr(all='ignore') # raise/ignore divisions by 0 and nans
 
@@ -86,10 +89,14 @@ def retrieve_images(inputs):
     """
     
     # initialise connection with GEE server
-    ee.Initialize()
+    # ee.Initialize()
+    ee.Initialize(project='npsbbeinlettracker2026')
+    print("DEBUG: GEE initialized")
 
     # check image availabiliy and retrieve list of images
+    print("DEBUG: Checking available images...")
     im_dict_T1, im_dict_T2 = check_images_available(inputs)
+    print("DEBUG: Available images checked")
 
     # if user also wants to download T2 images, merge both lists
     if 'include_T2' in inputs.keys():
@@ -204,6 +211,7 @@ def retrieve_images(inputs):
                         im_ee = ee.Image(im_meta['id'])
                         local_data_pan = download_tif(im_ee, inputs['polygon'], bands['pan'], filepaths[1])
                         local_data_ms = download_tif(im_ee, inputs['polygon'], bands['ms'], filepaths[2])
+                        print("DEBUG: Downloaded ms successfully")
                         break
                     except:
                         continue
@@ -389,15 +397,15 @@ def check_images_available(inputs):
 
     # check if EE was initialised or not
     try:
-        ee.ImageCollection('LANDSAT/LT05/C01/T1_TOA')
+        ee.ImageCollection('LANDSAT/LT05/C02/T1_TOA')
     except:
         ee.Initialize()
 
     print('Images available between %s and %s:'%(inputs['dates'][0],inputs['dates'][1]), end='\n')
     # check how many images are available in Tier 1 and Sentinel Level-1C
-    col_names_T1 = {'L5':'LANDSAT/LT05/C01/T1_TOA',
-                 'L7':'LANDSAT/LE07/C01/T1_TOA',
-                 'L8':'LANDSAT/LC08/C01/T1_TOA',
+    col_names_T1 = {'L5':'LANDSAT/LT05/C02/T1_TOA',
+                 'L7':'LANDSAT/LE07/C02/T1_TOA',
+                 'L8':'LANDSAT/LC08/C02/T1_TOA',
                  'S2':'COPERNICUS/S2'}
 
     print('- In Landsat Tier 1 & Sentinel-2 Level-1C:')
@@ -412,10 +420,18 @@ def check_images_available(inputs):
                 col = ee_col.filterBounds(ee.Geometry.Polygon(inputs['polygon']))\
                             .filterDate(inputs['dates'][0],inputs['dates'][1])
                 im_list = col.getInfo().get('features')
+                print("DEBUG: getInfo Succeeded")
                 break
-            except:
+            except Exception as e:
+                print("DEBUG: Exception occurred:")
+                print(str(e))
                 continue
+            #except:
+             #   continue
+
+            
         # remove very cloudy images (>95% cloud cover)
+        print("DEBUG: cloudy images")
         im_list_upt = remove_cloudy_images(im_list, satname)
         sum_img = sum_img + len(im_list_upt)
         print('  %s: %d images'%(satname,len(im_list_upt)))
@@ -428,9 +444,9 @@ def check_images_available(inputs):
         return im_dict_T1, []
 
     # otherwise check how many images are available in Landsat Tier 2
-    col_names_T2 = {'L5':'LANDSAT/LT05/C01/T2_TOA',
-                 'L7':'LANDSAT/LE07/C01/T2_TOA',
-                 'L8':'LANDSAT/LC08/C01/T2_TOA'}
+    col_names_T2 = {'L5':'LANDSAT/LT05/C02/T2_TOA',
+                 'L7':'LANDSAT/LE07/C02/T2_TOA',
+                 'L8':'LANDSAT/LC08/C02/T2_TOA'}
     print('- In Landsat Tier 2:', end='\n')
     im_dict_T2 = dict([])
     sum_img = 0
@@ -456,18 +472,14 @@ def check_images_available(inputs):
 
     return im_dict_T1, im_dict_T2
 
-
 def download_tif(image, polygon, bandsId, filepath):
     """
     Downloads a .TIF image from the ee server. The image is downloaded as a
     zip file then moved to the working directory, unzipped and stacked into a
     single .TIF file.
-
     Two different codes based on which version of the earth-engine-api is being
     used.
-
     KV WRL 2018
-
     Arguments:
     -----------
     image: ee.Image
@@ -478,13 +490,10 @@ def download_tif(image, polygon, bandsId, filepath):
     bandsId: list of dict
         list of bands to be downloaded
     filepath: location where the temporary file should be saved
-
     Returns:
     -----------
     Downloads an image in a file named data.tif
-
     """
-
     # for the old version of ee only
     if int(ee.__version__[-3:]) <= 201:
         url = ee.data.makeDownloadUrl(ee.data.getDownloadId({
@@ -532,6 +541,87 @@ def download_tif(image, polygon, bandsId, filepath):
             os.remove(os.path.join(filepath,'data.tif.aux'))
         # return filepath to stacked file called data.tif
         return os.path.join(filepath,'data.tif')
+
+
+# def download_tif(image, polygon, bandsId, filepath):
+#     """
+#     Downloads a .TIF image from the ee server. The image is downloaded as a
+#     zip file then moved to the working directory, unzipped and stacked into a
+#     single .TIF file.
+
+#     Two different codes based on which version of the earth-engine-api is being
+#     used.
+
+#     KV WRL 2018
+
+#     Arguments:
+#     -----------
+#     image: ee.Image
+#         Image object to be downloaded
+#     polygon: list
+#         polygon containing the lon/lat coordinates to be extracted
+#         longitudes in the first column and latitudes in the second column
+#     bandsId: list of dict
+#         list of bands to be downloaded
+#     filepath: location where the temporary file should be saved
+
+#     Returns:
+#     -----------
+#     Downloads an image in a file named data.tif
+
+#     """
+
+#     # for the old version of ee only
+#     ee_version = int(ee.__version__.split('.')[1])  # gets the middle number
+#     if ee_version <= 201:
+#         url = image.getDownloadUrl(ee.data.getDownloadId({
+#             'image': image.serialize(),
+#             'region': polygon,
+#             'bands': bandsId,
+#             'filePerBand': 'false',
+#             'name': 'data',
+#             }))
+#         local_zip, headers = urlretrieve(url)
+#         with zipfile.ZipFile(local_zip) as local_zipfile:
+#             return local_zipfile.extract('data.tif', filepath)
+#     # for the newer versions of ee
+#     else:
+#         # crop image on the server and create url to download
+#         print("DEBUG: Attempting to get download URL...")
+#         url = image.getDownloadUrl(ee.data.getDownloadId({
+#             'image': image,
+#             'region': polygon,
+#             'bands': bandsId,
+#             'filePerBand': 'false',
+#             'name': 'data',
+#             }))
+#         print("DEBUG: Got URL: {url}")
+#         # download zipfile with the cropped bands
+#         local_zip, headers = urlretrieve(url)
+#         # move zipfile from temp folder to data folder
+#         dest_file = os.path.join(filepath, 'imagezip')
+#         shutil.move(local_zip,dest_file)
+#         # unzip file
+#         with zipfile.ZipFile(dest_file) as local_zipfile:
+#             for fn in local_zipfile.namelist():
+#                 local_zipfile.extract(fn, filepath)
+#             # filepath + filename to single bands
+#             fn_tifs = [os.path.join(filepath,_) for _ in local_zipfile.namelist()]
+#         # stack bands into single .tif
+#         outds = gdal.BuildVRT(os.path.join(filepath,'stacked.vrt'), fn_tifs, separate=True)
+#         outds = gdal.Translate(os.path.join(filepath,'data.tif'), outds)
+#         # delete single-band files
+#         for fn in fn_tifs: os.remove(fn)
+#         # delete .vrt file
+#         os.remove(os.path.join(filepath,'stacked.vrt'))
+#         # delete zipfile
+#         os.remove(dest_file)
+#         # delete data.tif.aux (not sure why this is created)
+#         if os.path.exists(os.path.join(filepath,'data.tif.aux')):
+#             os.remove(os.path.join(filepath,'data.tif.aux'))
+#         # return filepath to stacked file called data.tif
+#         return os.path.join(filepath,'data.tif')
+
 
 
 def create_folder_structure(im_folder, satname):
@@ -806,7 +896,8 @@ def merge_overlapping_images(metadata,inputs):
                     # convert to binary
                     im_binary = np.logical_or(im_std < 1e-6, np.isnan(im_std))
                     # dilate to fill the edges (which have high std)
-                    mask10 = morphology.dilation(im_binary, morphology.square(3))
+                    #mask10 = morphology.dilation(im_binary, morphology.square(3)) DEBUGGING: This is the original, fix is below
+                    mask10 = morphology.dilation(im_binary, morphology.footprint_rectangle((3, 3)))
                     # mask the 10m .tif file (add no_data where mask is True)
                     SDS_tools.mask_raster(fn_im[index][0], mask10)    
                     # now calculate the mask for the 20m band (SWIR1)
@@ -815,7 +906,8 @@ def merge_overlapping_images(metadata,inputs):
                         # calculate std to create another mask for the 20m band (SWIR1)
                         im_std = SDS_tools.image_std(im_extra,1)
                         im_binary = np.logical_or(im_std < 1e-6, np.isnan(im_std))
-                        mask20 = morphology.dilation(im_binary, morphology.square(3))    
+                        #mask20 = morphology.dilation(im_binary, morphology.square(3)) #DEBUGGING: This is the original, fix is below
+                        mask20 = morphology.dilation(im_binary, morphology.footprint_rectangle((3, 3)))   
                     # for the newer versions just resample the mask for the 10m bands
                     else:
                         # create mask for the 20m band (SWIR1) by resampling the 10m one

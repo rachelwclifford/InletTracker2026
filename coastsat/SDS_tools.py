@@ -9,6 +9,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pdb
+import pandas as pd
 
 # other modules
 from osgeo import gdal, osr
@@ -140,8 +141,10 @@ def convert_epsg(points, epsg_in, epsg_out):
     # define input and output spatial references
     inSpatialRef = osr.SpatialReference()
     inSpatialRef.ImportFromEPSG(epsg_in)
+    inSpatialRef.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)   # DEBUGGING ADD
     outSpatialRef = osr.SpatialReference()
     outSpatialRef.ImportFromEPSG(epsg_out)
+    outSpatialRef.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)  # DEBUGGING ADD
     # create a coordinates transform
     coordTransform = osr.CoordinateTransformation(inSpatialRef, outSpatialRef)
     # if list of arrays
@@ -644,7 +647,8 @@ def output_to_gdf(output, geomtype):
             if counter == 0:
                 gdf_all = gdf
             else:
-                gdf_all = gdf_all.append(gdf)
+                #gdf_all = gdf_all.append(gdf)
+                gdf_all = pd.concat([gdf_all, gdf])
             counter = counter + 1
             
     return gdf_all
@@ -678,7 +682,8 @@ def transects_to_gdf(transects):
         if i == 0:
             gdf_all = gdf
         else:
-            gdf_all = gdf_all.append(gdf)
+            #gdf_all = gdf_all.append(gdf)
+            gdf_all = pd.concat([gdf_all, gdf])
             
     return gdf_all
 

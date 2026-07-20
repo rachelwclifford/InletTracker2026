@@ -9,6 +9,7 @@ Author: Kilian Vos, Water Research Laboratory, University of New South Wales
 # load modules
 import os
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 #import pdb
 
@@ -22,6 +23,7 @@ import skimage.exposure as exposure
 from osgeo import gdal
 from pylab import ginput
 import pickle
+import pandas as pd
 import geopandas as gpd
 from shapely import geometry
 
@@ -53,27 +55,39 @@ def create_cloud_mask(im_QA, satname, cloud_mask_issue):
         
     """
 
-    # convert QA bits (the bits allocated to cloud cover vary depending on the satellite mission)
-    if satname == 'L8':
-        cloud_values = [2800, 2804, 2808, 2812, 6896, 6900, 6904, 6908]
-    elif satname == 'L7' or satname == 'L5' or satname == 'L4':
-        cloud_values = [752, 756, 760, 764]
-    elif satname == 'S2':
-        cloud_values = [1024, 2048] # 1024 = dense cloud, 2048 = cirrus clouds
+    # # convert QA bits (the bits allocated to cloud cover vary depending on the satellite mission)
+    # if satname == 'L8':
+    #     cloud_values = [2800, 2804, 2808, 2812, 6896, 6900, 6904, 6908]
+    # elif satname == 'L7' or satname == 'L5' or satname == 'L4':
+    #     cloud_values = [752, 756, 760, 764]
+    # elif satname == 'S2':
+    #     cloud_values = [1024, 2048] # 1024 = dense cloud, 2048 = cirrus clouds
+        
+    #DEBUGGING CODE: Original code is above
+    if satname in ['L8', 'L9']:     
+        qa = im_QA.astype(np.int64)     # C02 QA_PIXEL bits: 1=dilated cloud, 2=cirrus, 3=cloud, 4=cloud shadow      
+        cloud_mask = (qa & ((1 << 3) | (1 << 2))) > 0 
+    elif satname in ['L4', 'L5', 'L7']:     
+        qa = im_QA.astype(np.int64)     # same layout, no cirrus bit on TM/ETM+     
+        cloud_mask = (qa & (1 << 3)) > 0 
+    elif satname == 'S2':     
+        cloud_mask = np.isin(im_QA, [1024, 2048])   # unchanged
+    #END DEBUGGING
 
-    # find which pixels have bits corresponding to cloud values
-    cloud_mask = np.isin(im_QA, cloud_values)
+    # # find which pixels have bits corresponding to cloud values
+    # cloud_mask = np.isin(im_QA, cloud_values)
 
     # remove cloud pixels that form very thin features. These are beach or swash pixels that are
     # erroneously identified as clouds by the CFMASK algorithm applied to the images by the USGS.
     if sum(sum(cloud_mask)) > 0 and sum(sum(~cloud_mask)) > 0:
-        morphology.remove_small_objects(cloud_mask, min_size=10, connectivity=1, in_place=True)
+        morphology.remove_small_objects(cloud_mask, min_size=10, connectivity=1)
 
         if cloud_mask_issue:
-            elem = morphology.square(3) # use a square of width 3 pixels
+            #elem = morphology.square(3) # use a square of width 3 pixels DEBUGGING: This is the original line, fix is below
+            elem = morphology.footprint_rectangle((3, 3))
             cloud_mask = morphology.binary_opening(cloud_mask,elem) # perform image opening
             # remove objects with less than 25 connected pixels
-            morphology.remove_small_objects(cloud_mask, min_size=25, connectivity=1, in_place=True)
+            morphology.remove_small_objects(cloud_mask, min_size=25, connectivity=1)
 
     return cloud_mask
 
@@ -206,11 +220,28 @@ def rescale_image_intensity(im, cloud_mask, prob_high):
         vec_adj = np.ones((len(vec_mask), im.shape[2])) * np.nan
         # loop through the bands
         for i in range(im.shape[2]):
+            #DEBUGGING LINE: 
+            # check if there are any valid pixels
+            valid_pixels = vec[~vec_mask, i]
+            if len(valid_pixels) == 0:
+                # if all pixels are masked, skip this band
+                vec_rescaled = vec[~vec_mask, i]
+            else:
+                # find the higher percentile (based on prob)
+                prc_high = np.percentile(vec[~vec_mask, i], prob_high)
+                # clip the image around the 2 percentiles and rescale the contrast
+                vec_rescaled = exposure.rescale_intensity(vec[~vec_mask, i],
+                                                 in_range=(np.nanmin(vec[~vec_mask, i]), np.nanmax(vec[~vec_mask, i])))
+            #END DEBUGGING SECTION
+            # ORIGINAL CODE HERE:
             # find the higher percentile (based on prob)
-            prc_high = np.percentile(vec[~vec_mask, i], prob_high)
-            # clip the image around the 2 percentiles and rescale the contrast
-            vec_rescaled = exposure.rescale_intensity(vec[~vec_mask, i],
-                                                      in_range=(prc_low, prc_high))
+            # prc_high = np.percentile(vec[~vec_mask, i], prob_high)
+            # # clip the image around the 2 percentiles and rescale the contrast
+            # vec_rescaled = exposure.rescale_intensity(vec[~vec_mask, i],
+            #                                          # in_range=(prc_low, prc_high))
+            #                                          # DEBUGGING LINE
+            #                                          in_range=(np.nanmin(vec[~vec_mask, i]), np.nanmax(vec[~vec_mask, i])))
+            #                                          # END DEBUGGING SECTOPN
             vec_adj[~vec_mask,i] = vec_rescaled
         # reshape into image
         im_adj = vec_adj.reshape(im.shape[0], im.shape[1], im.shape[2])
@@ -830,7 +861,7 @@ def get_reference_sl(metadata, settings):
                         phi = 0
                         deltax = pts_world[k+1,0] - pts_world[k,0]
                         deltay = pts_world[k+1,1] - pts_world[k,1]
-                        phi = np.pi/2 - np.math.atan2(deltax, deltay)
+                        phi = np.pi/2 - math.atan2(deltax, deltay)
                         tf = transform.EuclideanTransform(rotation=phi, translation=pts_world[k,:])
                         pts_world_interp = np.append(pts_world_interp,tf(pt_coords), axis=0)
                     pts_world_interp = np.delete(pts_world_interp,0,axis=0)
@@ -885,7 +916,8 @@ def get_reference_sl(metadata, settings):
                     if k == 0:
                         gdf_all = gdf
                     else:
-                        gdf_all = gdf_all.append(gdf)
+                        #gdf_all = gdf_all.append(gdf)
+                        gdf_all = pd.concat([gdf_all, gdf])
                 gdf_all.crs = {'init':'epsg:'+str(image_epsg)}
                 # convert from image_epsg to user-defined coordinate system
                 gdf_all = gdf_all.to_crs({'init': 'epsg:'+str(settings['output_epsg'])})
